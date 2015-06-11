@@ -32,7 +32,7 @@ var printSpectrum = function(output) {
         if (index > 32) {
             return;
         }
-        var floored = Math.floor(band * numBands / windowSize);
+        var floored = Math.max(0, Math.floor(band * numBands / windowSize));
         console.log(floored ? Array(floored).join('=') : '');
     });
 };
