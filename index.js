@@ -8,16 +8,30 @@ var windowSize = 4096;
 var avgFactor = 0.9;
 var fft = require('kissfft').fft;
 
+var hue = 0;
+var samplingRate = 44100;
 var numBands = 1024;
 var emitBand = 0;
 var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
-var printSpectrum = function(output) {
+
+var getAmplitude = function(f, spreadF) {
+    var midIndex = Math.round(f * windowSize / samplingRate);
+    var spread = Math.round(spreadF * windowSize / samplingRate);
+
+    var sum = 0;
+    for (var i = Math.max(0, midIndex - spread); i < Math.min(windowSize / 2, midIndex + spread); i++) {
+        sum += avg[i] * Math.exp(1 / (Math.abs(i - midIndex) + 1)) / Math.E;
+    }
+    return sum;
+};
+var avgResult = function(output) {
     _.each(output, function(band, index) {
         if (band) {
             avg[index] = avg[index] * avgFactor + band * (1 - avgFactor);
         }
     });
-
+};
+var printSpectrum = function(output) {
     var bands = Array.apply(null, new Array(numBands)).map(Number.prototype.valueOf, 0);
 
     _.each(avg, function(band, index) {
@@ -26,7 +40,7 @@ var printSpectrum = function(output) {
         }
     });
 
-    socket.emit('color', 'hsl(154, 100%, ' + Math.round(bands[emitBand] * numBands / windowSize) + '%)');
+    /*
     process.stdout.write('\u001B[2J\u001B[0;0f');
     _.each(bands, function(band, index) {
         if (index > 32) {
@@ -35,6 +49,16 @@ var printSpectrum = function(output) {
         var floored = Math.max(0, Math.floor(band * numBands / windowSize));
         console.log(floored ? Array(floored).join('=') : '');
     });
+    */
+
+    // cycle hue by approx. snare drum frequencies
+    hue += getAmplitude(1200, 300) / 100;
+    hue = hue % 256;
+
+    // adjust intensity by approx. kick drum frequencies
+    var intensity = getAmplitude(100, 50) / 4;
+
+    socket.emit('color', 'hsl(' + Math.round(hue) + ', 100%, ' + Math.round(intensity) + '%)');
 };
 
 var runFFT = function(newData) {
@@ -78,9 +102,8 @@ var runFFT = function(newData) {
         });
         */
 
-        printSpectrum(output);
-
-        socket.emit('color', 'hsl(154, 100%, ' + Math.round(avg[10]) + '%)');
+        avgResult(output);
+        printSpectrum(avg);
     });
 };
 
