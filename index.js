@@ -5,13 +5,19 @@ var socket = require('socket.io-client')('http://fruitiex.org:9191');
 
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
-var avgFactor = 0.5;
-var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
+var avgFactor = 0.9;
 var fft = require('kissfft').fft;
 
-var numBands = 128;
+var numBands = 1024;
 var emitBand = 0;
-var printSpectrum = function() {
+var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
+var printSpectrum = function(output) {
+    _.each(output, function(band, index) {
+        if (band) {
+            avg[index] = avg[index] * avgFactor + band * (1 - avgFactor);
+        }
+    });
+
     var bands = Array.apply(null, new Array(numBands)).map(Number.prototype.valueOf, 0);
 
     _.each(avg, function(band, index) {
@@ -23,7 +29,7 @@ var printSpectrum = function() {
     socket.emit('color', 'hsl(154, 100%, ' + Math.round(bands[emitBand] * numBands / windowSize) + '%)');
     process.stdout.write('\u001B[2J\u001B[0;0f');
     _.each(bands, function(band, index) {
-        if (index > 64) {
+        if (index > 32) {
             return;
         }
         var floored = Math.floor(band * numBands / windowSize);
@@ -56,19 +62,23 @@ var runFFT = function(newData) {
     var output = new Float32Array(complex.length);
     fft(input, output, function(err, outputObj) {
         var output = [];
-        for (var i = 0; i < (outputObj.length / 2) + 1; i++) {
+        for (var i = 0; i < (windowSize / 2); i++) {
             var real = outputObj[(i * 2)];
             var imag = outputObj[(i * 2) + 1];
             output[i] = Math.sqrt((real * real) + (imag * imag));
         }
-        _.map(output, function(band) {
+        /*
+        output = _.map(output, function(band) {
             return 20 * Math.log10(band);
         });
+        */
+        /*
         _.each(output, function(band, index) {
             avg[index] = avgFactor * avg[index] + (1 - avgFactor) * band;
         });
+        */
 
-        printSpectrum();
+        printSpectrum(output);
 
         socket.emit('color', 'hsl(154, 100%, ' + Math.round(avg[10]) + '%)');
     });
