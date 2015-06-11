@@ -6,18 +6,29 @@ var socket = require('socket.io-client')('http://fruitiex.org:9191');
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
 var avgFactor = 0.5;
-var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf,0);
+var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
 var fft = require('kissfft').fft;
 
+var numBands = 128;
+var emitBand = 0;
 var printSpectrum = function() {
-    process.stdout.write('\u001B[2J\u001B[0;0f');
-    for(var i = 0; i < windowSize / 64; i++) {
-        if (avg[i]) {
-            console.log(Array(Math.floor(avg[i])).join('='));
-        } else {
-            console.log();
+    var bands = Array.apply(null, new Array(numBands)).map(Number.prototype.valueOf, 0);
+
+    _.each(avg, function(band, index) {
+        if (band) {
+            bands[Math.round((index / (windowSize / 2)) * numBands)] += band;
         }
-    }
+    });
+
+    socket.emit('color', 'hsl(154, 100%, ' + Math.round(bands[emitBand] * numBands / windowSize) + '%)');
+    process.stdout.write('\u001B[2J\u001B[0;0f');
+    _.each(bands, function(band, index) {
+        if (index > 64) {
+            return;
+        }
+        var floored = Math.floor(band * numBands / windowSize);
+        console.log(floored ? Array(floored).join('=') : '');
+    });
 };
 
 var runFFT = function(newData) {
