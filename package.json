@@ -12,6 +12,7 @@
   "dependencies": {
     "kissfft": "0.0.8",
     "node-spawn": "0.0.7",
+    "onecolor": "^2.5.0",
     "socket.io-client": "^1.3.5",
     "underscore": "^1.8.3"
   }
