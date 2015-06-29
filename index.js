@@ -28,31 +28,30 @@ var bands = {
         peakBin: 0
     }
 }
-var ival = 0;
-//var minVal = 100;
-var dPeak = 0.995;
+var dPeak = 0.9975;
 
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
 var avgFactor = 0.85;
-var binChangeAvg = 0.95;
 var fft = require('kissfft').fft;
 
 var hue = 0;
-var samplingRate = 44100;
-var minF = 0;
-var maxF = 22050;
-var emitBand = 0;
 var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
+var globalPeak = 0;
 
 var findPeakBins = function(output) {
+    globalPeak = globalPeak * dPeak;
     _.each(bands, function(band) {
         var peak = 0;
         for (var i = band.minBin; i < band.maxBin; i++) {
             if (output[i] - avg[i] > peak) {
                 peak = output[i] - avg[i];
+                //var binChangeAvg = 0.95;
                 //band.peakBin = band.peakBin * binChangeAvg + (1 - binChangeAvg) * i;
                 band.peakBin = i;
+            }
+            if (output[i] > globalPeak) {
+                globalPeak = output[i];
             }
         }
     });
@@ -75,8 +74,11 @@ var printSpectrum = function(output) {
 
     // adjust intensity by approx. kick drum frequencies
     //var intensity = getAmplitude(100, 6);
+    console.log(globalPeak);
     var intensity = output[Math.round(bands.bass.peakBin)];
     bands.bass.peak = Math.max(1, Math.max(bands.bass.peak * dPeak, intensity));
+    // don't let peak fall too low if there's still energy in other bands
+    bands.bass.peak = Math.max(globalPeak / 2, bands.bass.peak);
     bands.bass.value = bands.bass.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1);
     bands.bass.value = Math.max(bands.bass.value, (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1));
     //bands.bass.value = (Math.exp(Math.pow(intensity / bands.bass.peak, 2)) - 1) / (Math.E - 1);
@@ -85,13 +87,17 @@ var printSpectrum = function(output) {
     //
     intensity = output[Math.round(bands.snare.peakBin)];
     bands.snare.peak = Math.max(1, Math.max(bands.snare.peak * dPeak, intensity));
+    // don't let peak fall too low if there's still energy in other bands
+    bands.snare.peak = Math.max(globalPeak / 2, bands.snare.peak);
     bands.snare.value = bands.snare.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1);
     bands.snare.value = Math.max(bands.snare.value, (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1));
 
     intensity = output[Math.round(bands.hihat.peakBin)];
     bands.hihat.peak = Math.max(0.01, Math.max(bands.hihat.peak * dPeak, intensity));
+    // don't let peak fall too low if there's still energy in other bands
+    bands.hihat.peak = Math.max(globalPeak / 2, bands.hihat.peak);
     bands.hihat.value = bands.hihat.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.hihat.peak, 4)) - 1) / (Math.E - 1);
-    //bands.hihat.value = Math.max(bands.hihat.value, (Math.exp(Math.pow(intensity / bands.hihat.peak, 4)) - 1) / (Math.E - 1));
+    //bands.hihat.value = Math.max(bands.hihat.value, (Math.exp(Math.pow(intensity / globalPeak, 4)) - 1) / (Math.E - 1));
 
     //bands.bass.value = Math.max(bands.bass.value * avgFactor, bands.bass.value * 100 - 25);
     var bass = bands.bass.value
