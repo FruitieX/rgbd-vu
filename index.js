@@ -15,13 +15,13 @@ var bands = {
     },
     snare: {
         minBin: 9,
-        maxBin: 16,
+        maxBin: 20,
         value: 0,
         peak: 0,
         peakBin: 0
     },
     hihat: {
-        minBin: 51,
+        minBin: 21,
         maxBin: 1800,
         value: 0,
         peak: 0,
@@ -78,6 +78,7 @@ var printSpectrum = function(output) {
     var intensity = output[Math.round(bands.bass.peakBin)];
     bands.bass.peak = Math.max(1, Math.max(bands.bass.peak * dPeak, intensity));
     // don't let peak fall too low if there's still energy in other bands
+    // TODO: tweak "/ 2"
     bands.bass.peak = Math.max(globalPeak / 2, bands.bass.peak);
     bands.bass.value = bands.bass.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1);
     bands.bass.value = Math.max(bands.bass.value, (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1));
