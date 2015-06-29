@@ -7,19 +7,25 @@ var one = require('onecolor');
 // maximum values observed in a while
 var bands = {
     bass: {
-        bin: 4,
+        minBin: 4,
+        maxBin: 8,
         value: 0,
-        peak: 0
+        peak: 0,
+        peakBin: 0
     },
     snare: {
-        bin: 15,
+        minBin: 9,
+        maxBin: 16,
         value: 0,
-        peak: 0
+        peak: 0,
+        peakBin: 0
     },
     hihat: {
-        bin: 900,
+        minBin: 51,
+        maxBin: 1800,
         value: 0,
-        peak: 0
+        peak: 0,
+        peakBin: 0
     }
 }
 var ival = 0;
@@ -28,7 +34,8 @@ var dPeak = 0.995;
 
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
-var avgFactor = 0.80;
+var avgFactor = 0.85;
+var binChangeAvg = 0.95;
 var fft = require('kissfft').fft;
 
 var hue = 0;
@@ -38,12 +45,37 @@ var maxF = 22050;
 var emitBand = 0;
 var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
 
+var findPeakBins = function(output) {
+    _.each(bands, function(band) {
+        var peak = 0;
+        for (var i = band.minBin; i < band.maxBin; i++) {
+            if (output[i] - avg[i] > peak) {
+                peak = output[i] - avg[i];
+                //band.peakBin = band.peakBin * binChangeAvg + (1 - binChangeAvg) * i;
+                band.peakBin = i;
+            }
+        }
+    });
+};
+
+var avgResult = function(output) {
+    var retval = [];
+    _.each(output, function(band, index) {
+        if (band) {
+            avg[index] = avg[index] * avgFactor + band * (1 - avgFactor);
+            retval[index] = avg[index];
+        }
+    });
+
+    return output;
+};
+
 var printSpectrum = function(output) {
     hue += 0.0005;
 
     // adjust intensity by approx. kick drum frequencies
     //var intensity = getAmplitude(100, 6);
-    var intensity = output[bands.bass.bin];
+    var intensity = output[Math.round(bands.bass.peakBin)];
     bands.bass.peak = Math.max(1, Math.max(bands.bass.peak * dPeak, intensity));
     bands.bass.value = bands.bass.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1);
     bands.bass.value = Math.max(bands.bass.value, (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1));
@@ -51,26 +83,33 @@ var printSpectrum = function(output) {
     //minVal = Math.min(minVal * (2 - dVal), intensity);
     //console.log(minVal);
     //
-    intensity = output[bands.snare.bin];
+    intensity = output[Math.round(bands.snare.peakBin)];
     bands.snare.peak = Math.max(1, Math.max(bands.snare.peak * dPeak, intensity));
     bands.snare.value = bands.snare.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1);
     bands.snare.value = Math.max(bands.snare.value, (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1));
 
-    intensity = output[bands.hihat.bin];
+    intensity = output[Math.round(bands.hihat.peakBin)];
     bands.hihat.peak = Math.max(0.01, Math.max(bands.hihat.peak * dPeak, intensity));
     bands.hihat.value = bands.hihat.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.hihat.peak, 4)) - 1) / (Math.E - 1);
     //bands.hihat.value = Math.max(bands.hihat.value, (Math.exp(Math.pow(intensity / bands.hihat.peak, 4)) - 1) / (Math.E - 1));
 
     //bands.bass.value = Math.max(bands.bass.value * avgFactor, bands.bass.value * 100 - 25);
     var bass = bands.bass.value
-    console.log(Math.floor(bands.bass.value * 100) + '\t' + Math.floor(bands.snare.value * 100) + '\t' + Math.floor(bands.hihat.value * 100));
+        console.log(Math.floor(bands.bass.value * 100) + '\t'
+                + Math.floor(bands.snare.value * 100) + '\t'
+                + Math.floor(bands.hihat.value * 100) + '\t'
+                + Math.round(bands.bass.peakBin) + '\t'
+                + Math.round(bands.snare.peakBin) + '\t'
+                + Math.round(bands.hihat.peakBin));
     //socket.emit('color', 'hsl(' + Math.round(hue) + ', 100%, ' + Math.round(((intensity - minVal) / (imaxVal - minVal)) * 50) + '%)');
     //var colorBass = onecolor.color('hsl(' + Math.round(hue)
     var vuColor = one('#000')
         .red(bands.bass.value)
         .blue(bands.snare.value)
         //.green(bands.hihat.value)
-        .hue(hue, true);
+        .hue(hue
+            //+ (bands.bass.peakBin + bands.snare.peakBin + bands.hihat.peakBin) / 10000
+            , true);
     socket.emit('color', vuColor.css());
 };
 
@@ -106,12 +145,13 @@ var runFFT = function(newData) {
         }
         /*
         output = _.map(output, function(band) {
-            return 20 * Math.log10(band);
+        return 20 * Math.log10(band);
         });
         */
 
-        //avgResult(output);
-        printSpectrum(output);
+        var newAvg = avgResult(output);
+        findPeakBins(newAvg, output);
+        printSpectrum(newAvg);
     });
 };
 
