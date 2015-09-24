@@ -1,3 +1,5 @@
+'use strict';
+
 var fs = require('fs');
 var Spawn = require('node-spawn');
 var _ = require('underscore');
@@ -7,35 +9,37 @@ var one = require('onecolor');
 // maximum values observed in a while
 var bands = {
     bass: {
-        minBin: 4,
-        maxBin: 8,
+        minBin: 2,
+        maxBin: 9,
         value: 0,
         peak: 0,
-        peakBin: 0
+        peakBin: 4
     },
     snare: {
-        minBin: 9,
-        maxBin: 20,
+        minBin: 10,
+        maxBin: 399,
         value: 0,
         peak: 0,
-        peakBin: 0
+        peakBin: 12
     },
     hihat: {
-        minBin: 21,
-        maxBin: 1800,
+        minBin: 400,
+        maxBin: 2000,
         value: 0,
         peak: 0,
-        peakBin: 0
+        peakBin: 1800
     }
 }
 var dPeak = 0.9975;
 
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
-var avgFactor = 0.85;
+var avgFactor = 0.75;
+var hueAvgFactor = 0.95;
 var fft = require('kissfft').fft;
 
 var hue = 0;
+var avgHue = 0;
 var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
 var globalPeak = 0;
 
@@ -70,17 +74,18 @@ var avgResult = function(output) {
 };
 
 var printSpectrum = function(output) {
-    hue += 0.0005;
+    hue += 0.00025;
 
     // adjust intensity by approx. kick drum frequencies
     //var intensity = getAmplitude(100, 6);
-    console.log(globalPeak);
+    //console.log(globalPeak);
     var intensity = output[Math.round(bands.bass.peakBin)];
     bands.bass.peak = Math.max(1, Math.max(bands.bass.peak * dPeak, intensity));
     // don't let peak fall too low if there's still energy in other bands
     // TODO: tweak "/ 2"
     bands.bass.peak = Math.max(globalPeak / 2, bands.bass.peak);
     bands.bass.value = bands.bass.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1);
+    // let peaks ramp up value instantly
     bands.bass.value = Math.max(bands.bass.value, (Math.exp(Math.pow(intensity / bands.bass.peak, 4)) - 1) / (Math.E - 1));
     //bands.bass.value = (Math.exp(Math.pow(intensity / bands.bass.peak, 2)) - 1) / (Math.E - 1);
     //minVal = Math.min(minVal * (2 - dVal), intensity);
@@ -89,34 +94,51 @@ var printSpectrum = function(output) {
     intensity = output[Math.round(bands.snare.peakBin)];
     bands.snare.peak = Math.max(1, Math.max(bands.snare.peak * dPeak, intensity));
     // don't let peak fall too low if there's still energy in other bands
-    bands.snare.peak = Math.max(globalPeak / 2, bands.snare.peak);
+    bands.snare.peak = Math.max(globalPeak / 3, bands.snare.peak);
     bands.snare.value = bands.snare.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1);
+    // let peaks ramp up value instantly
     bands.snare.value = Math.max(bands.snare.value, (Math.exp(Math.pow(intensity / bands.snare.peak, 4)) - 1) / (Math.E - 1));
 
     intensity = output[Math.round(bands.hihat.peakBin)];
     bands.hihat.peak = Math.max(0.01, Math.max(bands.hihat.peak * dPeak, intensity));
     // don't let peak fall too low if there's still energy in other bands
-    bands.hihat.peak = Math.max(globalPeak / 2, bands.hihat.peak);
+    bands.hihat.peak = Math.max(globalPeak / 4, bands.hihat.peak);
     bands.hihat.value = bands.hihat.value * avgFactor + (1 - avgFactor) * (Math.exp(Math.pow(intensity / bands.hihat.peak, 4)) - 1) / (Math.E - 1);
-    //bands.hihat.value = Math.max(bands.hihat.value, (Math.exp(Math.pow(intensity / globalPeak, 4)) - 1) / (Math.E - 1));
+    // let peaks ramp up value instantly
+    bands.hihat.value = Math.max(bands.hihat.value, (Math.exp(Math.pow(intensity / globalPeak, 4)) - 1) / (Math.E - 1));
 
     //bands.bass.value = Math.max(bands.bass.value * avgFactor, bands.bass.value * 100 - 25);
-    var bass = bands.bass.value
-        console.log(Math.floor(bands.bass.value * 100) + '\t'
-                + Math.floor(bands.snare.value * 100) + '\t'
-                + Math.floor(bands.hihat.value * 100) + '\t'
-                + Math.round(bands.bass.peakBin) + '\t'
-                + Math.round(bands.snare.peakBin) + '\t'
-                + Math.round(bands.hihat.peakBin));
+    console.log(Math.floor(bands.bass.value * 100) + '\t'
+            + Math.floor(bands.snare.value * 100) + '\t'
+            + Math.floor(bands.hihat.value * 100) + '\t'
+            + Math.round(bands.bass.peakBin) + '\t'
+            + Math.round(bands.snare.peakBin) + '\t'
+            + Math.round(bands.hihat.peakBin * 0.5));
     //socket.emit('color', 'hsl(' + Math.round(hue) + ', 100%, ' + Math.round(((intensity - minVal) / (imaxVal - minVal)) * 50) + '%)');
     //var colorBass = onecolor.color('hsl(' + Math.round(hue)
+
+    // warp hue according to which bins are peaking
+    // but only if value is above a treshold
+    var hueTreshold = 0.1;
+
+    var tempHue = hue +
+        ((bands.bass.value > hueTreshold) ? bands.bass.value * (-0.1 + bands.bass.peakBin / 5) : 0) +
+        ((bands.snare.value > hueTreshold) ? bands.snare.value * (0.1 + Math.sqrt(bands.snare.peakBin) / 4) : 0);// +
+        //((bands.hihat.value > hueTreshold) ? bands.hihat.value * Math.sqrt(bands.hihat.peakBin) : 0);
+
+    avgHue = avgHue * hueAvgFactor + tempHue * (1 - hueAvgFactor);
+    console.log(avgHue);
     var vuColor = one('#000')
-        .red(bands.bass.value)
-        .blue(bands.snare.value)
+        //.red(Math.max(bands.bass.value, bands.snare.value, bands.hihat.value))
+        //.red(1 - Math.max(0.5, bands.bass.value, bands.snare.value))
+        .red(1)
+        //.blue(1 - bands.snare.value)
         //.green(bands.hihat.value)
-        .hue(hue
+        .hue(avgHue
             //+ (bands.bass.peakBin + bands.snare.peakBin + bands.hihat.peakBin) / 10000
-            , true);
+            , true)
+        .saturation(1.0 + Math.max(bands.bass.value, bands.snare.value) / 2)
+        .value(Math.max(0.125, bands.bass.value, bands.snare.value, bands.hihat.value * 0.5));
     socket.emit('color', vuColor.css());
 };
 
