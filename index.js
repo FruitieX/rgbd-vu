@@ -34,7 +34,7 @@ var dPeak = 0.9975;
 
 var audioBuffer = new Buffer(0);
 var windowSize = 4096;
-var avgFactor = 0.75;
+var avgFactor = 0.98;
 var hueAvgFactor = 0.95;
 var fft = require('kissfft').fft;
 
@@ -126,19 +126,19 @@ var printSpectrum = function(output) {
         ((bands.snare.value > hueTreshold) ? bands.snare.value * (0.1 + Math.sqrt(bands.snare.peakBin) / 4) : 0);// +
         //((bands.hihat.value > hueTreshold) ? bands.hihat.value * Math.sqrt(bands.hihat.peakBin) : 0);
 
-    avgHue = avgHue * hueAvgFactor + tempHue * (1 - hueAvgFactor);
-    console.log(avgHue);
+    //avgHue = avgHue * hueAvgFactor + tempHue * (1 - hueAvgFactor);
+    avgHue += 0.00005;
     var vuColor = one('#000')
         //.red(Math.max(bands.bass.value, bands.snare.value, bands.hihat.value))
         //.red(1 - Math.max(0.5, bands.bass.value, bands.snare.value))
         .red(1)
         //.blue(1 - bands.snare.value)
         //.green(bands.hihat.value)
-        .hue(avgHue
+        .hue(avgHue)
             //+ (bands.bass.peakBin + bands.snare.peakBin + bands.hihat.peakBin) / 10000
-            , true)
-        .saturation(1.0 + Math.max(bands.bass.value, bands.snare.value) / 2)
-        .value(Math.max(0.125, bands.bass.value, bands.snare.value, bands.hihat.value * 0.5));
+            //, true)
+        //.saturation(1.0 + Math.max(bands.bass.value, bands.snare.value) / 2)
+        .value(Math.max(0.1, 1 - bands.bass.value));
     socket.emit('color', vuColor.css());
 };
 
