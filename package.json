@@ -10,7 +10,7 @@
   "author": "FruitieX",
   "license": "ISC",
   "dependencies": {
-    "fft-js": "0.0.9",
+    "digitalsignals": "^1.0.0",
     "fft-windowing": "^0.1.4",
     "node-spawn": "0.0.7",
     "onecolor": "^2.5.0",

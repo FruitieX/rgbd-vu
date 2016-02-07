@@ -6,12 +6,11 @@ var Spawn = require('node-spawn');
 var socket = require('socket.io-client')('http://localhost:9009');
 var _ = require('underscore');
 var one = require('onecolor');
-var fftInPlace = require('fft-js').fftInPlace;
-var fftUtil = require('fft-js').util;
 var windowing = require('fft-windowing');
 
 var audioBuffer = new Buffer(0);
-var windowSize = 4096;
+//var windowSize = 4096;
+var windowSize = 1024;
 //var windowSize = 8192;
 
 // computed later
@@ -38,7 +37,7 @@ var avgPeakFade = 0.001;
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
 // of the lowest volume you'd realistically listen to music at
-var avgPeakMin = 0.01 // i found this value to work great in my setup
+var avgPeakMin = 0.0001 // i found this value to work great in my setup
 
 var lightnessLimit = 0.6 // to avoid a lot of white pixels
 
@@ -106,7 +105,7 @@ var printSpectrum = function(output) {
         };
     }
 
-    console.log('bands saturated: ' + saturationBands);
+    //console.log('bands saturated: ' + saturationBands);
     socket.emit('frame', leds);
 };
 
@@ -116,28 +115,34 @@ for (var i = 0; i < numLeds; i++) {
     leds[i] = one('#000');
 }
 
+var dsp = require('digitalsignals');
+var fft = new dsp.FFT(windowSize, 44100);
 var runFFT = function(newData) {
+    // TODO: match me with window size
+    console.log(newData.length);
     audioBuffer = Buffer.concat([audioBuffer, newData]);
 
-    if (audioBuffer.length < windowSize) {
+    if (audioBuffer.length < windowSize * 2) {
         // too little data, try again next time
         console.log('too little data');
         return;
     }
 
-    audioBuffer = audioBuffer.slice(audioBuffer.length - windowSize);
+    audioBuffer = audioBuffer.slice(audioBuffer.length - windowSize * 2);
 
     var samples = [];
-    for (var i = 0; i < windowSize; i+= 2) {
+    for (var i = 0; i < audioBuffer.length; i+= 2) {
         var sample = audioBuffer.readInt16LE(i, true) / 32767.0;
         samples.push(sample);
     }
 
-    var windowed = windowing.hann(samples);
+    // TODO: needed? does dsp.js do this?
+    //var windowed = windowing.hann(samples);
+    var windowed = samples;
 
-    fftInPlace(windowed);
+    fft.forward(windowed);
+    var magnitudes = fft.spectrum;
 
-    var magnitudes = fftUtil.fftMag(windowed);
     magnitudes = magnitudes.slice(skipBinsHead, magnitudes.length - skipBinsTail);
 
     binsPerLed = Math.floor(magnitudes.length / numLeds);
