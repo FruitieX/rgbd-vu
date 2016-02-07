@@ -2,125 +2,58 @@
 
 var numLeds = 91;
 
-var fs = require('fs');
 var Spawn = require('node-spawn');
 var socket = require('socket.io-client')('http://localhost:9009');
 var _ = require('underscore');
 var one = require('onecolor');
-
-// maximum values observed in a while
-var bands = [
-    {
-        // sub bass
-        minBin: 2,
-        maxBin: 8,
-        value: 0,
-        peak: 0,
-        peakBin: 2
-    }, {
-        // kick drum
-        minBin: 9,
-        maxBin: 15,
-        value: 0,
-        peak: 0,
-        peakBin: 9
-    }, {
-        // kick drum
-        minBin: 16,
-        maxBin: 29,
-        value: 0,
-        peak: 0,
-        peakBin: 16
-    }, {
-        // snare
-        minBin: 30,
-        maxBin: 59,
-        value: 0,
-        peak: 0,
-        peakBin: 30
-    }, {
-        // snare
-        minBin: 60,
-        maxBin: 99,
-        value: 0,
-        peak: 0,
-        peakBin: 60
-    }, {
-        // snare
-        minBin: 100,
-        maxBin: 149,
-        value: 0,
-        peak: 0,
-        peakBin: 100
-    }, {
-        // hihat
-        minBin: 150,
-        maxBin: 299,
-        value: 0,
-        peak: 0,
-        peakBin: 150
-    }, {
-        // hihat
-        minBin: 300,
-        maxBin: 374,
-        value: 0,
-        peak: 0,
-        peakBin: 300
-    }, {
-        // hihat
-        minBin: 375,
-        maxBin: 449,
-        value: 0,
-        peak: 0,
-        peakBin: 375
-    }, {
-        // hihat
-        minBin: 450,
-        maxBin: 599,
-        value: 0,
-        peak: 0,
-        peakBin: 450
-    }, {
-        minBin: 600,
-        maxBin: 1023,
-        value: 0,
-        peak: 0,
-        peakBin: 700
-    }
-];
-var dPeak = 0.9975;
-
-var audioBuffer = new Buffer(0);
-var windowSize = 4096;
-//var binsPerLed = Math.floor((windowSize / 8) / numLeds);
-var binsPerLed = Math.floor((windowSize / 5) / numLeds);
-var avgFactor = 0.9;
-var avgFactor = 0.95;
-var hueAvgFactor = 0.99;
 var fftInPlace = require('fft-js').fftInPlace;
 var fftUtil = require('fft-js').util;
+
+var audioBuffer = new Buffer(0);
+//var windowSize = 4096;
+var windowSize = 4096;
+
+// computed later
+var binsPerLed;
+
+// skip this many low frequency bins
+var skipBinsHead = 0;
+
+// skip this many high frequency bins, nothing interesting in them
+var skipBinsTail = 300;
+
+var avgFactor = 0.95;
 
 var hue = 0;
 var avgHue = 0;
 var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
-var globalPeak = 0;
 
-var findPeakBins = function(output) {
-    globalPeak = globalPeak * dPeak;
-    _.each(bands, function(band) {
-        var peak = 0;
-        for (var i = band.minBin; i < band.maxBin; i++) {
-            if (output[i] - avg[i] > peak) {
-                peak = output[i] - avg[i];
-                //var binChangeAvg = 0.95;
-                //band.peakBin = band.peakBin * binChangeAvg + (1 - binChangeAvg) * i;
-                band.peakBin = i;
-            }
-            if (output[i] > globalPeak) {
-                globalPeak = output[i];
-            }
-        }
+// scale everything according to avg bin amplitude
+var avgPeak = 0;
+
+// fade avg peak out over time - in case user lowers volume
+var avgPeakFade = 0.001;
+
+// ... but never under the noise floor (in case playback stops)
+// experiment with this value and set it to match the maximum peak
+// of the lowest volume you'd realistically listen to music at
+var avgPeakMin = 1 // i found a value of 1 to work great in my setup
+
+var lightnessLimit = 0.6 // to avoid a lot of white pixels
+
+var findGlobalPeak = function(output) {
+    // begin by fading out global peak
+    avgPeak = avgPeak * (1 - avgPeakFade);
+
+    //console.log(avgPeak);
+
+    var total = 0;
+    output.forEach(function(band, i) {
+        total += band;
+        //total += (0.65 + 1.25 * i / numLeds) * band;
     });
+
+    avgPeak = Math.max(avgPeak, total / output.length);
 };
 
 var avgResult = function(output) {
@@ -139,21 +72,30 @@ var avgResult = function(output) {
 var printSpectrum = function(output) {
     hue += 0.001;
 
+    var saturationBands = 0;
+
     var leds = [];
     for (var i = 0; i < numLeds; i++) {
         var total = 0;
 
         for (var j = 0; j < binsPerLed; j++) {
-            total += output[i * binsPerLed + j];
+            total += output[i * binsPerLed + j] / avgPeak;
         }
         total /= binsPerLed;
 
         // lower bass frequencies, boost high frequencies
-        total *= (0.65 + 1.5 * i / numLeds);
+        total *= (0.5 + 2 * i / numLeds);
+
+        // no really, lower bass frequencies even more, they're LOUD
+        total *= Math.min(1, 0.1 + 10 * (i / numLeds));
 
         //total = (Math.exp(total) - 1) / (Math.E - 1);
-        total *= total;
-        total = Math.min(total, 0.8);
+        total = Math.pow(total, 4);
+
+        if (total >= lightnessLimit) {
+            saturationBands++;
+        }
+        total = Math.min(total, lightnessLimit);
 
         var color = new one.HSL(hue + i / 100, 1, total || 0);
         leds[numLeds - 1 - i] = {
@@ -163,6 +105,7 @@ var printSpectrum = function(output) {
         };
     }
 
+    console.log('bands saturated: ' + saturationBands);
     socket.emit('frame', leds);
 };
 
@@ -193,8 +136,18 @@ var runFFT = function(newData) {
 
     var magnitudes = fftUtil.fftMag(samples);
 
+    for (var i = 0; i < skipBinsHead; i++) {
+        magnitudes.shift();
+    }
+    for (var i = 0; i < skipBinsTail; i++) {
+        magnitudes.pop();
+    }
+
+    binsPerLed = Math.floor(magnitudes.length / numLeds);
+    magnitudes.shift();
+
     var avg = avgResult(magnitudes);
-    //findPeakBins(avg);
+    findGlobalPeak(avg);
     printSpectrum(avg);
 };
 
