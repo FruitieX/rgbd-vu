@@ -1,4 +1,4 @@
-serialrgb-vu
-============
+rgbd-vu
+=======
 
-Change serialrgb colors with music playing from pulseaudio
+Change rgbd colors with music playing from pulseaudio
