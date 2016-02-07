@@ -8,10 +8,11 @@ var _ = require('underscore');
 var one = require('onecolor');
 var fftInPlace = require('fft-js').fftInPlace;
 var fftUtil = require('fft-js').util;
+var windowing = require('fft-windowing');
 
 var audioBuffer = new Buffer(0);
-//var windowSize = 4096;
 var windowSize = 4096;
+//var windowSize = 8192;
 
 // computed later
 var binsPerLed;
@@ -22,11 +23,11 @@ var skipBinsHead = 0;
 // skip this many high frequency bins, nothing interesting in them
 var skipBinsTail = 300;
 
+// pixel colors toward new value by this much each frame
 var avgFactor = 0.95;
 
 var hue = 0;
-var avgHue = 0;
-var avg = Array.apply(null, new Array(windowSize / 2)).map(Number.prototype.valueOf, 0);
+var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
 // scale everything according to avg bin amplitude
 var avgPeak = 0;
@@ -37,7 +38,7 @@ var avgPeakFade = 0.001;
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
 // of the lowest volume you'd realistically listen to music at
-var avgPeakMin = 1 // i found a value of 1 to work great in my setup
+var avgPeakMin = 0.01 // i found this value to work great in my setup
 
 var lightnessLimit = 0.6 // to avoid a lot of white pixels
 
@@ -50,10 +51,10 @@ var findGlobalPeak = function(output) {
     var total = 0;
     output.forEach(function(band, i) {
         total += band;
-        //total += (0.65 + 1.25 * i / numLeds) * band;
     });
 
     avgPeak = Math.max(avgPeak, total / output.length);
+    avgPeak = Math.max(avgPeak, avgPeakMin);
 };
 
 var avgResult = function(output) {
@@ -132,19 +133,14 @@ var runFFT = function(newData) {
         samples.push(sample);
     }
 
-    fftInPlace(samples);
+    var windowed = windowing.hann(samples);
 
-    var magnitudes = fftUtil.fftMag(samples);
+    fftInPlace(windowed);
 
-    for (var i = 0; i < skipBinsHead; i++) {
-        magnitudes.shift();
-    }
-    for (var i = 0; i < skipBinsTail; i++) {
-        magnitudes.pop();
-    }
+    var magnitudes = fftUtil.fftMag(windowed);
+    magnitudes = magnitudes.slice(skipBinsHead, magnitudes.length - skipBinsTail);
 
     binsPerLed = Math.floor(magnitudes.length / numLeds);
-    magnitudes.shift();
 
     var avg = avgResult(magnitudes);
     findGlobalPeak(avg);
