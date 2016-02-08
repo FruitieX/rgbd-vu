@@ -11,8 +11,8 @@ var numLeds = 91;
 
 // number of LEDs in secondary strip
 var numLedsSecondary = 11;
-var secondaryMin = 10;
-var secondaryMax = 70;
+var secondaryMin = 20;
+var secondaryMax = 60;
 
 var audioBuffer = new Buffer(0);
 
