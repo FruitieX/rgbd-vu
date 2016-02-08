@@ -9,6 +9,11 @@ var windowing = require('fft-windowing');
 // number of LEDs in your setup
 var numLeds = 91;
 
+// number of LEDs in secondary strip
+var numLedsSecondary = 11;
+var secondaryMin = 10;
+var secondaryMax = 70;
+
 var audioBuffer = new Buffer(0);
 
 // how many samples to consider for one fft computation
@@ -121,7 +126,7 @@ var printSpectrum = function(spectrum) {
         total = Math.min(total, lightnessLimit);
 
         var color = new one.HSL(hue + i / 100, 1, total || 0);
-        leds[numLeds - 1 - i] = {
+        leds[i] = {
             red: color.red() * 255,
             green: color.green() * 255,
             blue: color.blue() * 255
@@ -129,7 +134,39 @@ var printSpectrum = function(spectrum) {
     }
 
     console.log('bands saturated: ' + saturationBands);
-    socket.emit('frame', leds);
+    socket.emit('frame', {
+        id: 0,
+        colors: leds
+    });
+
+    var secondaryLeds = [];
+
+    var sRange = secondaryMax - secondaryMin;
+    for (var i = 0; i < numLedsSecondary; i++) {
+        var lo = Math.round(secondaryMin + i / numLedsSecondary * sRange);
+        var hi = Math.round(secondaryMin + (i + 1) / numLedsSecondary * sRange);
+
+        secondaryLeds[i] = {
+            red: 0,
+            green: 0,
+            blue: 0
+        }
+
+        var led = secondaryLeds[i];
+        for (var j = lo; j < hi; j++) {
+            led.red += leds[j].red;
+            led.green += leds[j].green;
+            led.blue += leds[j].blue;
+        }
+
+        led.red /= hi - lo;
+        led.green /= hi - lo;
+        led.blue /= hi - lo;
+    }
+    socket.emit('frame', {
+        id: 1,
+        colors: secondaryLeds
+    });
 };
 
 var leds = [];
