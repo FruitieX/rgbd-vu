@@ -1,34 +1,43 @@
 'use strict';
 
-var numLeds = 91;
-
 var Spawn = require('node-spawn');
 var socket = require('socket.io-client')('http://localhost:9009');
 var _ = require('underscore');
 var one = require('onecolor');
 var windowing = require('fft-windowing');
 
+// number of LEDs in your setup
+var numLeds = 91;
+
 var audioBuffer = new Buffer(0);
-//var windowSize = 4096;
-var windowSize = 1024;
-//var windowSize = 8192;
 
-// computed later
-var binsPerLed;
+// how many samples to consider for one fft computation
+// lower = faster response times BUT you start to lose bass frequencies!
+// must be power of 2
+var windowSize = 2048;
 
-// skip this many low frequency bins
-var skipBinsHead = 0;
+// skip this many low frequency bins (stuff we can't hear isn't very interesting)
+var skipBinsHead = 2;
 
-// skip this many high frequency bins, nothing interesting in them
-var skipBinsTail = 300;
+// skip this many high frequency bins, nothing really interesting in them either
+var skipBinsTail = 200;
 
-// pixel colors toward new value by this much each frame
-var avgFactor = 0.95;
+// old pixel color retained by this percentage each frame, higher is smoother, lower is faster
+var avgFactor = 0.925;
 
-var hue = 0;
-var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
+// all colors are scaled by this factor, reduce if too bright and vice versa
+var scale = 0.08;
 
-// scale everything according to avg bin amplitude
+ // to avoid a lot of white pixels (lighness 1 = white, 0.5 = fully saturated, 0 = black)
+var lightnessLimit = 0.6
+
+// sample rate for incoming audio, affects pacat arguments and rate at which data is read
+var sampleRate = 44100;
+
+// frame rate to attempt to run FFT at, LEDs always updated at this rate
+var framerate = 60;
+
+// [computed] scale everything according to avg bin amplitude
 var avgPeak = 0;
 
 // fade avg peak out over time - in case user lowers volume
@@ -37,14 +46,16 @@ var avgPeakFade = 0.001;
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
 // of the lowest volume you'd realistically listen to music at
-var avgPeakMin = 0.0001 // i found this value to work great in my setup
+var avgPeakMin = 0.00001 // i found this value to work great in my setup
 
-var lightnessLimit = 0.6 // to avoid a lot of white pixels
+var hue = 0;
+var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
 var findGlobalPeak = function(output) {
     // begin by fading out global peak
     avgPeak = avgPeak * (1 - avgPeakFade);
 
+    // uncomment if tweaking avgPeakMin
     //console.log(avgPeak);
 
     var total = 0;
@@ -69,7 +80,10 @@ var avgResult = function(output) {
     return retval;
 };
 
-var printSpectrum = function(output) {
+var printSpectrum = function(spectrum) {
+    spectrum = avgResult(spectrum);
+    findGlobalPeak(spectrum);
+
     hue += 0.001;
 
     var saturationBands = 0;
@@ -78,16 +92,25 @@ var printSpectrum = function(output) {
     for (var i = 0; i < numLeds; i++) {
         var total = 0;
 
-        for (var j = 0; j < binsPerLed; j++) {
-            total += output[i * binsPerLed + j] / avgPeak;
+        // log scale on spectrum: low frequencies get very few bins,
+        // high frequencies get lots of bins
+        var sl = spectrum.length;
+        var lo = Math.round(Math.pow(sl, i / numLeds)) - 1;
+        var hi = Math.round(Math.pow(sl, (i + 1) / numLeds)) - 1;
+
+        if (lo === hi) {
+            hi++;
         }
-        total /= binsPerLed;
 
-        // lower bass frequencies, boost high frequencies
-        total *= (0.5 + 2 * i / numLeds);
+        for (var j = lo; j < hi; j++) {
+            total += spectrum[j] / avgPeak;
+        }
 
-        // no really, lower bass frequencies even more, they're LOUD
-        total *= Math.min(1, 0.1 + 10 * (i / numLeds));
+        //total /= hi - lo;
+        total *= scale;
+
+        // lower sub-bass frequencies, they're LOUD
+        total *= Math.min(1, 0.2 + 100 * (lo / spectrum.length));
 
         //total = (Math.exp(total) - 1) / (Math.E - 1);
         total = Math.pow(total, 4);
@@ -105,7 +128,7 @@ var printSpectrum = function(output) {
         };
     }
 
-    //console.log('bands saturated: ' + saturationBands);
+    console.log('bands saturated: ' + saturationBands);
     socket.emit('frame', leds);
 };
 
@@ -116,46 +139,49 @@ for (var i = 0; i < numLeds; i++) {
 }
 
 var dsp = require('digitalsignals');
-var fft = new dsp.FFT(windowSize, 44100);
-var runFFT = function(newData) {
-    // TODO: match me with window size
-    console.log(newData.length);
-    audioBuffer = Buffer.concat([audioBuffer, newData]);
-
-    if (audioBuffer.length < windowSize * 2) {
-        // too little data, try again next time
-        console.log('too little data');
-        return;
-    }
-
-    audioBuffer = audioBuffer.slice(audioBuffer.length - windowSize * 2);
-
+var fft = new dsp.FFT(windowSize);
+var magnitudes;
+var runFFT = function(buffer) {
     var samples = [];
-    for (var i = 0; i < audioBuffer.length; i+= 2) {
-        var sample = audioBuffer.readInt16LE(i, true) / 32767.0;
+    for (var i = 0; i < buffer.length; i+= 2) {
+        var sample = buffer.readInt16LE(i, true) / 32767.0;
         samples.push(sample);
     }
 
-    // TODO: needed? does dsp.js do this?
-    //var windowed = windowing.hann(samples);
-    var windowed = samples;
+    var windowed = windowing.hann(samples);
 
     fft.forward(windowed);
-    var magnitudes = fft.spectrum;
+    magnitudes = fft.spectrum.slice(skipBinsHead, fft.spectrum.length - skipBinsTail);
 
-    magnitudes = magnitudes.slice(skipBinsHead, magnitudes.length - skipBinsTail);
+    printSpectrum(magnitudes);
+};
 
-    binsPerLed = Math.floor(magnitudes.length / numLeds);
+setInterval(function() {
+    if (audioBuffer.length < windowSize * 2) {
+        // too little data, try again next time
+        console.log('too little data');
+        if (magnitudes) {
+            printSpectrum(magnitudes);
+        }
+        return;
+    }
 
-    var avg = avgResult(magnitudes);
-    findGlobalPeak(avg);
-    printSpectrum(avg);
+    runFFT(audioBuffer.slice(0, windowSize * 2));
+    audioBuffer = audioBuffer.slice(sampleRate / framerate * 2);
+}, 1000 / framerate);
+
+var handleData = function(data) {
+    audioBuffer = Buffer.concat([audioBuffer, data]);
+
+    if (audioBuffer.length >= windowSize * 2) {
+        audioBuffer = audioBuffer.slice(audioBuffer.length - windowSize * 2);
+    }
 };
 
 var spawn = Spawn({
     cmd: 'pacat',
-    args: ['--record', '--raw', '--channels=1', '--format=s16le'],
-    onStdout: runFFT
+    args: ['--record', '--raw', '--channels=1', '--format=s16le', '--rate=' + sampleRate],
+    onStdout: handleData
 });
 
 spawn.start();
