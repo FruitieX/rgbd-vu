@@ -3,4 +3,4 @@ rgbd-vu
 
 Change rgbd colors with music playing from pulseaudio
 
-NOTE: as it's using a js based fft library, it's quite heavy!
+~~NOTE: as it's using a js based fft library, it's quite heavy!~~ (this is no longer true!)
