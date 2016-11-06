@@ -7,7 +7,7 @@ var one = require('onecolor');
 var windowing = require('fft-windowing');
 
 // number of LEDs in your setup
-var numLeds = 91;
+var numLeds = 90;
 
 // number of LEDs in secondary strip
 var numLedsSecondary = 11;
@@ -59,9 +59,6 @@ var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf,
 var findGlobalPeak = function(output) {
     // begin by fading out global peak
     avgPeak = avgPeak * (1 - avgPeakFade);
-
-    // uncomment if tweaking avgPeakMin
-    //console.log(avgPeak);
 
     var total = 0;
     output.forEach(function(band, i) {
@@ -127,13 +124,12 @@ var printSpectrum = function(spectrum) {
 
         var color = new one.HSL(hue + i / 100, 1, total || 0);
         leds[i] = {
-            red: color.red() * 255,
-            green: color.green() * 255,
-            blue: color.blue() * 255
+            r: color.red() * 255,
+            g: color.green() * 255,
+            b: color.blue() * 255
         };
     }
 
-    console.log('bands saturated: ' + saturationBands);
     socket.emit('frame', {
         id: 0,
         colors: leds
@@ -163,10 +159,12 @@ var printSpectrum = function(spectrum) {
         led.green /= hi - lo;
         led.blue /= hi - lo;
     }
+    /*
     socket.emit('frame', {
         id: 1,
         colors: secondaryLeds
     });
+    */
 };
 
 var leds = [];
@@ -196,7 +194,6 @@ var runFFT = function(buffer) {
 setInterval(function() {
     if (audioBuffer.length < windowSize * 2) {
         // too little data, try again next time
-        console.log('too little data');
         if (magnitudes) {
             printSpectrum(magnitudes);
         }
