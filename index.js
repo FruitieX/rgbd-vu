@@ -214,7 +214,7 @@ var handleData = function(data) {
 
 var spawn = Spawn({
     cmd: 'pacat',
-    args: ['--record', '--raw', '--channels=1', '--format=s16le', '--rate=' + sampleRate],
+    args: ['--record', '--raw', '--channels=1', '--format=s16le', '--rate=' + sampleRate, '--latency-msec=1'],
     onStdout: handleData
 });
 
