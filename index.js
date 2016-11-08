@@ -31,7 +31,7 @@ var skipBinsTail = 200;
 var avgFactor = 0.925;
 
 // all colors are scaled by this factor, reduce if too bright and vice versa
-var scale = 0.08;
+var scale = 0.075;
 
  // to avoid a lot of white pixels (lighness 1 = white, 0.5 = fully saturated, 0 = black)
 var lightnessLimit = 0.5
@@ -48,12 +48,13 @@ var avgPeak = 0;
 // fade avg peak out over time - in case user lowers volume
 var avgPeakFade = 0.001;
 
+var hueSpeed = 0.1;
+
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
 // of the lowest volume you'd realistically listen to music at
 var avgPeakMin = 0.00001 // i found this value to work great in my setup
 
-var hue = 0;
 var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
 var findGlobalPeak = function(output) {
@@ -86,10 +87,6 @@ var printSpectrum = function(spectrum) {
     spectrum = avgResult(spectrum);
     findGlobalPeak(spectrum);
 
-    hue += 0.001;
-
-    var saturationBands = 0;
-
     var leds = [];
     for (var i = 0; i < numLeds; i++) {
         var total = 0;
@@ -97,32 +94,36 @@ var printSpectrum = function(spectrum) {
         // log scale on spectrum: low frequencies get very few bins,
         // high frequencies get lots of bins
         var sl = spectrum.length;
-        var lo = Math.round(Math.pow(sl, i / numLeds)) - 1;
-        var hi = Math.round(Math.pow(sl, (i + 1) / numLeds)) - 1;
+        var lo = Math.pow(sl, i / numLeds) - 1;
+        var hi = Math.pow(sl, (i + 1) / numLeds) - 1;
 
-        if (lo === hi) {
+        if (Math.floor(lo) === Math.floor(hi)) {
             hi++;
         }
 
-        for (var j = lo; j < hi; j++) {
-            total += spectrum[j] / avgPeak;
+        for (var j = Math.floor(lo); j < Math.floor(hi); j++) {
+            // smooth out low frequencies by blending to nearest bins
+            if (Math.floor(lo) + 1 === Math.floor(hi)) {
+                let pctLo = 1 - (lo - Math.floor(lo));
+                let pctHi = 1 - pctLo;
+                total += spectrum[j] * pctLo;
+                total += spectrum[j + 1] * pctHi;
+
+                total /= avgPeak;
+            } else {
+                total += spectrum[j] / avgPeak;
+            }
         }
 
-        //total /= hi - lo;
         total *= scale;
 
-        // lower sub-bass frequencies, they're LOUD
-        total *= Math.min(1, 0.2 + 100 * (lo / spectrum.length));
+        // lower loud sub-bass frequencies
+        total *= Math.min(1, 0.5 + 20 * (lo / spectrum.length));
 
-        //total = (Math.exp(total) - 1) / (Math.E - 1);
         total = Math.pow(total, 4);
-
-        if (total >= lightnessLimit) {
-            saturationBands++;
-        }
         total = Math.min(total, lightnessLimit);
 
-        var color = new one.HSL(hue + i / 100, 1, total || 0);
+        var color = new one.HSL(new Date().getTime() / 1000 * hueSpeed + i / 100, 1, total || 0);
         leds[i] = {
             r: color.red() * 255,
             g: color.green() * 255,
@@ -132,10 +133,11 @@ var printSpectrum = function(spectrum) {
 
     socket.emit('frame', {
         id: 0,
-        name: 'vu',
+        name: 'music',
         colors: leds
     });
 
+    /*
     var secondaryLeds = [];
 
     var sRange = secondaryMax - secondaryMin;
@@ -160,7 +162,6 @@ var printSpectrum = function(spectrum) {
         led.green /= hi - lo;
         led.blue /= hi - lo;
     }
-    /*
     socket.emit('frame', {
         id: 1,
         colors: secondaryLeds
