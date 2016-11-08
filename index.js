@@ -132,6 +132,7 @@ var printSpectrum = function(spectrum) {
 
     socket.emit('frame', {
         id: 0,
+        name: 'vu',
         colors: leds
     });
 
