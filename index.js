@@ -34,13 +34,13 @@ var avgFactor = 0.925;
 var scale = 0.08;
 
  // to avoid a lot of white pixels (lighness 1 = white, 0.5 = fully saturated, 0 = black)
-var lightnessLimit = 0.6
+var lightnessLimit = 0.5
 
 // sample rate for incoming audio, affects pacat arguments and rate at which data is read
 var sampleRate = 44100;
 
 // frame rate to attempt to run FFT at, LEDs always updated at this rate
-var framerate = 60;
+var framerate = 120;
 
 // [computed] scale everything according to avg bin amplitude
 var avgPeak = 0;
