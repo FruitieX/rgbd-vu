@@ -133,7 +133,7 @@ var printSpectrum = function(spectrum) {
 
     socket.emit('frame', {
         id: 0,
-        name: 'music',
+        name: 'Music',
         colors: leds
     });
 
