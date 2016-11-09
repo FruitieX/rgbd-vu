@@ -57,6 +57,31 @@ var avgPeakMin = 0.00001 // i found this value to work great in my setup
 
 var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
+var palette = 1;
+
+var calcColor = function(i, numLeds, total) {
+    let c = null;
+    const time = new Date().getTime();
+
+    if (palette === 0) {
+        let hue = hueSpeed * time / 1000 + i / numLeds * 360;
+
+        hue %= 360;
+
+        c = color({
+            h: hue,
+            s: 1,
+            v: total || 0
+        }).toRgb();
+    } else if (palette === 1) {
+        let fade = 50 * Math.sin(i / numLeds * 4 * Math.PI + (hueSpeed / 90) * time / 1000) + 50;
+        c = color.mix(color('white'), color('red'), fade);
+        c = color.mix(color('black'), c, total * 100).toRgb();
+    }
+
+    return c;
+};
+
 var findGlobalPeak = function(output) {
     // begin by fading out global peak
     avgPeak = avgPeak * (1 - avgPeakFade);
@@ -123,14 +148,7 @@ var printSpectrum = function(spectrum) {
         total = Math.pow(total, 4);
         total = Math.min(total, lightnessLimit);
 
-        let hue = hueSpeed * new Date().getTime() / 1000 + i / numLeds * 360;
-        hue %= 360;
-
-        var c = color({
-            h: hue,
-            s: 1,
-            v: total || 0
-        }).toRgb();
+        let c = calcColor(i, numLeds, total);
 
         leds[i] = {
             r: c.r,
