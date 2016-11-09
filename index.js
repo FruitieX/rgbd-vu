@@ -3,7 +3,7 @@
 var Spawn = require('node-spawn');
 var socket = require('socket.io-client')('http://localhost:9009');
 var _ = require('underscore');
-var one = require('onecolor');
+const color = require('tinycolor2');
 var windowing = require('fft-windowing');
 
 // number of LEDs in your setup
@@ -48,7 +48,7 @@ var avgPeak = 0;
 // fade avg peak out over time - in case user lowers volume
 var avgPeakFade = 0.001;
 
-var hueSpeed = 0.1;
+var hueSpeed = 25;
 
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
@@ -123,11 +123,19 @@ var printSpectrum = function(spectrum) {
         total = Math.pow(total, 4);
         total = Math.min(total, lightnessLimit);
 
-        var color = new one.HSL(new Date().getTime() / 1000 * hueSpeed + i / 100, 1, total || 0);
+        let hue = hueSpeed * new Date().getTime() / 1000 + i / numLeds * 360;
+        hue %= 360;
+
+        var c = color({
+            h: hue,
+            s: 1,
+            v: total || 0
+        }).toRgb();
+
         leds[i] = {
-            r: color.red() * 255,
-            g: color.green() * 255,
-            b: color.blue() * 255
+            r: c.r,
+            g: c.g,
+            b: c.b
         };
     }
 
@@ -172,7 +180,7 @@ var printSpectrum = function(spectrum) {
 var leds = [];
 
 for (var i = 0; i < numLeds; i++) {
-    leds[i] = one('#000');
+    leds[i] = color('black');
 }
 
 var dsp = require('digitalsignals');
