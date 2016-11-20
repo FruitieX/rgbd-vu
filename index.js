@@ -45,15 +45,23 @@ var framerate = 120;
 // [computed] scale everything according to avg bin amplitude
 var avgPeak = 0;
 
+// maximum observed band
+var maxPeak = 0;
+
 // fade avg peak out over time - in case user lowers volume
 var avgPeakFade = 0.001;
 
 var hueSpeed = 25;
 
+// timeouts for starting/stopping lights
+var activityTimeout = null;
+var inactivityTimeout = null;
+
 // ... but never under the noise floor (in case playback stops)
 // experiment with this value and set it to match the maximum peak
 // of the lowest volume you'd realistically listen to music at
 var avgPeakMin = 0.00001 // i found this value to work great in my setup
+var noiseFloor = 0.0001 // detect silence if max peak smaller than this
 
 var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
@@ -75,7 +83,11 @@ var calcColor = function(i, numLeds, total) {
         }).toRgb();
     } else if (palette === 1) {
         let fade = 50 * Math.sin(i / numLeds * 4 * Math.PI + (hueSpeed / 90) * time / 1000) + 50;
-        c = color.mix(color('white'), color('red'), fade);
+        c = color.mix(color({
+            r: 255,
+            g: 128,
+            b: 96
+        }), color('red'), fade);
         c = color.mix(color('black'), c, total * 100).toRgb();
     }
 
@@ -85,9 +97,13 @@ var calcColor = function(i, numLeds, total) {
 var findGlobalPeak = function(output) {
     // begin by fading out global peak
     avgPeak = avgPeak * (1 - avgPeakFade);
+    maxPeak = 0;
 
     var total = 0;
     output.forEach(function(band, i) {
+        if (band > maxPeak) {
+            maxPeak = band;
+        }
         total += band;
     });
 
@@ -217,7 +233,32 @@ var runFFT = function(buffer) {
     magnitudes = fft.spectrum.slice(skipBinsHead, fft.spectrum.length - skipBinsTail);
 
     printSpectrum(magnitudes);
+
+    if (maxPeak <= noiseFloor) {
+        // silence detected. defer activity timeout
+        clearTimeout(activityTimeout);
+        activityTimeout = setTimeout(activate, activityTime);
+    } else {
+        // music detected. defer inactivity timeout
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = setTimeout(deactivate, inactivityTime);
+    }
 };
+
+var inactivityTime = 10000;
+var activityTime = 3000;
+
+var deactivate = function() {
+    console.log('deactivating pattern');
+    socket.emit('prevPattern', 'Music');
+}
+inactivityTimeout = setTimeout(deactivate, inactivityTime);
+
+var activate = function() {
+    console.log('activating pattern');
+    socket.emit('activate', 'Music');
+}
+activityTimeout = setTimeout(activate, activityTime);
 
 setInterval(function() {
     if (audioBuffer.length < windowSize * 2) {
