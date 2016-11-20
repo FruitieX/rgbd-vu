@@ -33,9 +33,6 @@ var avgFactor = 0.925;
 // all colors are scaled by this factor, reduce if too bright and vice versa
 var scale = 0.075;
 
- // to avoid a lot of white pixels (lighness 1 = white, 0.5 = fully saturated, 0 = black)
-var lightnessLimit = 0.5
-
 // sample rate for incoming audio, affects pacat arguments and rate at which data is read
 var sampleRate = 44100;
 
@@ -85,8 +82,8 @@ var calcColor = function(i, numLeds, total) {
         let fade = 50 * Math.sin(i / numLeds * 4 * Math.PI + (hueSpeed / 90) * time / 1000) + 50;
         c = color.mix(color({
             r: 255,
-            g: 128,
-            b: 96
+            g: 160,
+            b: 120
         }), color('red'), fade);
         c = color.mix(color('black'), c, total * 100).toRgb();
     }
@@ -162,7 +159,7 @@ var printSpectrum = function(spectrum) {
         total *= Math.min(1, 0.5 + 20 * (lo / spectrum.length));
 
         total = Math.pow(total, 4);
-        total = Math.min(total, lightnessLimit);
+        total = Math.min(1, total);
 
         let c = calcColor(i, numLeds, total);
 
