@@ -28,7 +28,7 @@ var skipBinsHead = 2;
 var skipBinsTail = 200;
 
 // old pixel color retained by this percentage each frame, higher is smoother, lower is faster
-var avgFactor = 0.925;
+var avgFactor = 0.95;
 
 // all colors are scaled by this factor, reduce if too bright and vice versa
 var scale = 0.075;
@@ -62,7 +62,7 @@ var noiseFloor = 0.0001 // detect silence if max peak smaller than this
 
 var avg = Array.apply(null, new Array(windowSize)).map(Number.prototype.valueOf, 0);
 
-var palette = 1;
+var palette = 0;
 
 var calcColor = function(i, numLeds, total) {
     let c = null;
@@ -82,7 +82,7 @@ var calcColor = function(i, numLeds, total) {
         let fade = 50 * Math.sin(i / numLeds * 4 * Math.PI + (hueSpeed / 90) * time / 1000) + 50;
         c = color.mix(color({
             r: 255,
-            g: 160,
+            g: 200,
             b: 120
         }), color('red'), fade);
         c = color.mix(color('black'), c, total * 100).toRgb();
@@ -154,12 +154,19 @@ var printSpectrum = function(spectrum) {
         }
 
         total *= scale;
+        total -= 0.5;
 
         // lower loud sub-bass frequencies
-        total *= Math.min(1, 0.5 + 20 * (lo / spectrum.length));
+        total *= Math.min(1, 0.25 + 20 * (lo / spectrum.length));
 
-        total = Math.pow(total, 4);
+        // ^2 scaling
+        //total = Math.pow(total, 0.5);
+
+        // sqrt() scaling
+        total = Math.sqrt(total);
+
         total = Math.min(1, total);
+        total = Math.max(0, total);
 
         let c = calcColor(i, numLeds, total);
 
@@ -244,15 +251,24 @@ var runFFT = function(buffer) {
 
 var inactivityTime = 10000;
 var activityTime = 3000;
+var active = false;
 
 var deactivate = function() {
-    console.log('deactivating pattern');
+    if (!active) {
+        return;
+    }
+
+    active = false;
     socket.emit('prevPattern', 'Music');
 }
 inactivityTimeout = setTimeout(deactivate, inactivityTime);
 
 var activate = function() {
-    console.log('activating pattern');
+    if (active) {
+        return;
+    }
+
+    active = true;
     socket.emit('activate', 'Music');
 }
 activityTimeout = setTimeout(activate, activityTime);
